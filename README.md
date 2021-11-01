@@ -1,15 +1,24 @@
-# CAN-BUS-Man-In-The-Middle
-CAN BUS Man In The Middle for spying on and modifyling automotive can traffic on the fly.
+# CAN-BUS-Man-In-The-Middle 2: The fork awakens.
 
-Originally designed to allow use of a Tesla Gen 2 Battery charger in a gen 1 Nissan Leaf
+CAN BUS Man In The Middle for spying on and modifying automotive CAN traffic on the fly.
 
-Software in development.
+Firmware originally designed to allow use of a Tesla Gen 2 Battery charger in a gen 1 Nissan Leaf.
+I unashamedly forked it to make the cheap odometer defeat tools usable for more wholesome reasons.
 
-Design files in DesignSpark PCB 9 format.
+Hardware originally designed to defeat odometer mileage.
 
-Untested as of release date.
+This fork is purely for personal use and therefore has no expectation of:
+- being to any sane standard.
+- working.
+- safe.
 
-21/03/20 : Software V1 uploaded. Built with ST CubeIDE. Hardware available from the Evbmw shop :
-https://www.evbmw.com/index.php/evbmw-webshop/nissan-built-and-tested-boards/can-bus-man-in-the-middle
+At this moment in time, for me alone:
+- Compiles.
+- Talks via UART on the device.
+- Has not touched anything CAN.
+
+What am I intending to doing with it:
+- Modifying data sent to an entertainment status display intended for a newer model than supported by my car. (Peugeot 508 display into 407).
 
 
+Licence is GNU v3. 

@@ -51,25 +51,27 @@ bool Change_Can_Speed(CAN_HandleTypeDef *myhcan,char canspeed_char);
 void PrintMenu(void);
 void PrintCanSpeed(void);
 void PrintConfig(void);
-void EEPROM_Block_Read(uint16_t *BlockList);
-void EEPROM_Block_Write(uint16_t *BlockList);
+void EEPROM_Block_Read(uint8_t Direction,uint16_t *BlockList);
+void EEPROM_Block_Write(uint8_t Direction,uint16_t *BlockList);
 bool Serial_Available(UART_HandleTypeDef *huart);
 void MenuDecode(char decodechar);
-bool cancheckblock(void);
+bool cancheckblock(uint8_t Direction, uint32_t StdId);
 void clearbuffer(uint8_t *buffer);
 bool candecode(uint8_t *buffer);
-void DeleteBlockList(uint16_t BlockedCanID);
-void AddtoBlockList(uint16_t BlockedCanID);
+void DeleteBlockList(uint8_t Direction,uint16_t BlockedCanID);
+void AddtoBlockList(uint8_t Direction,uint16_t BlockedCanID);
 
 /* Private variables ---------------------------------------------------------*/
 uint16_t VirtAddVarTab[20]={20777,20778,20779,20780,20781,20782,20783,20784,20785,20786,20787,20788,20789,20790};
-uint16_t BlockList[10];
-uint8_t Can1RxData[8];
+uint16_t BlockList1[10];
+uint16_t BlockList2[10];
 char Rxchar;
-char canspeedchar='2';
+char canspeedchar='4';
 bool start=false;
+bool sniff=false;
 bool debug=true;
 uint8_t CAN1RxData[8];
+uint8_t CAN2RxData[8];
 
 /**
   * @brief  The application entry point.
@@ -93,7 +95,8 @@ int main(void)
   printf("System initializated.\r\n");
 
   EE_Init();
-  EEPROM_Block_Read(BlockList);
+  EEPROM_Block_Read(1,BlockList1);
+  EEPROM_Block_Read(2,BlockList2);
   if(Can_Init(&hcan1)){
 	  printf("Using CAN-1 - initialization completed.\r\n");
   }
@@ -265,29 +268,39 @@ void PrintMenu(void){
 	printf("2-Change CAN-2 Speed\r\n");
 	printf("3-Block CAN ID's\r\n");
 	printf("4-Unblock CAN ID's\r\n");
-	printf("5-Modify CAN Messages\r\n");
+	//printf("5-Modify CAN Messages\r\n");
 	printf("6-Send Custom Messages via CAN-1\r\n");
 	printf("7-Send Custom Messages via CAN-2\r\n");
 	printf("c-Show Current Configuration.\r\n");
 	printf("d-Enable/Disable Debug\r\n");
-	printf("s-Start/Stop The Man in the Middle\r\n");
+	printf("s-Start/Stop Blocks\r\n");
+	printf("t-Start/Stop Traffic Sniff\r\n");
 	printf("m-Show Menu\r\n");
 }
 void PrintCanSpeed(void){
 	printf("Please Select The Can Speed\r\n");
 	printf("1-1000 KBPS\r\n");
-	printf("2-500  KBPS(default)\r\n");
+	printf("2-500  KBPS\r\n");
 	printf("3-250  KBPS\r\n");
-	printf("4-150  KBPS\r\n");
+	printf("4-150  KBPS (default)\r\n");
 	printf("5-100  KBPS\r\n");
 	printf("6-50   KPBS\r\n");
 }
 void PrintConfig(void){
 	int counter=1;
-	printf("Block List\r\n");
+	printf("Block List 1:\r\n");
 	for(int i=0;i<10;i++){
-		if(BlockList[i]!=0){
-			printf("%d-%03x\r\n",counter,BlockList[i]);
+		if(BlockList1[i]!=0){
+			printf("%d-%03x\r\n",counter,BlockList1[i]);
+			counter++;
+		}
+	}
+
+	counter=1;
+	printf("Block List 2:\r\n");
+	for(int i=0;i<10;i++){
+		if(BlockList2[i]!=0){
+			printf("%d-%03x\r\n",counter,BlockList2[i]);
 			counter++;
 		}
 	}
@@ -310,32 +323,34 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void ToggleLed1(void){
 	HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 }
-void EEPROM_Block_Read(uint16_t *BlockList){
+void EEPROM_Block_Read(uint8_t Direction,uint16_t *BlockList){
+	uint8_t offset = (Direction==1)?0:10;
 	HAL_FLASH_Unlock();
-	EE_ReadVariable(VirtAddVarTab[0], &BlockList[0]);
-	EE_ReadVariable(VirtAddVarTab[1], &BlockList[1]);
-	EE_ReadVariable(VirtAddVarTab[2], &BlockList[2]);
-	EE_ReadVariable(VirtAddVarTab[3], &BlockList[3]);
-	EE_ReadVariable(VirtAddVarTab[4], &BlockList[4]);
-	EE_ReadVariable(VirtAddVarTab[5], &BlockList[5]);
-	EE_ReadVariable(VirtAddVarTab[6], &BlockList[6]);
-	EE_ReadVariable(VirtAddVarTab[7], &BlockList[7]);
-	EE_ReadVariable(VirtAddVarTab[8], &BlockList[8]);
-	EE_ReadVariable(VirtAddVarTab[9], &BlockList[9]);
+	EE_ReadVariable(VirtAddVarTab[0]+offset, &BlockList[0]);
+	EE_ReadVariable(VirtAddVarTab[1]+offset, &BlockList[1]);
+	EE_ReadVariable(VirtAddVarTab[2]+offset, &BlockList[2]);
+	EE_ReadVariable(VirtAddVarTab[3]+offset, &BlockList[3]);
+	EE_ReadVariable(VirtAddVarTab[4]+offset, &BlockList[4]);
+	EE_ReadVariable(VirtAddVarTab[5]+offset, &BlockList[5]);
+	EE_ReadVariable(VirtAddVarTab[6]+offset, &BlockList[6]);
+	EE_ReadVariable(VirtAddVarTab[7]+offset, &BlockList[7]);
+	EE_ReadVariable(VirtAddVarTab[8]+offset, &BlockList[8]);
+	EE_ReadVariable(VirtAddVarTab[9]+offset, &BlockList[9]);
 	HAL_FLASH_Lock();
 }
-void EEPROM_Block_Write(uint16_t *BlockList){
+void EEPROM_Block_Write(uint8_t Direction,uint16_t *BlockList){
+	uint8_t offset = (Direction==1)?0:10;
 	HAL_FLASH_Unlock();
-	EE_WriteVariable(VirtAddVarTab[0], BlockList[0]);
-	EE_WriteVariable(VirtAddVarTab[1], BlockList[1]);
-	EE_WriteVariable(VirtAddVarTab[2], BlockList[2]);
-	EE_WriteVariable(VirtAddVarTab[3], BlockList[3]);
-	EE_WriteVariable(VirtAddVarTab[4], BlockList[4]);
-	EE_WriteVariable(VirtAddVarTab[5], BlockList[5]);
-	EE_WriteVariable(VirtAddVarTab[6], BlockList[6]);
-	EE_WriteVariable(VirtAddVarTab[7], BlockList[7]);
-	EE_WriteVariable(VirtAddVarTab[8], BlockList[8]);
-	EE_WriteVariable(VirtAddVarTab[9], BlockList[9]);
+	EE_WriteVariable(VirtAddVarTab[0]+offset, BlockList[0]);
+	EE_WriteVariable(VirtAddVarTab[1]+offset, BlockList[1]);
+	EE_WriteVariable(VirtAddVarTab[2]+offset, BlockList[2]);
+	EE_WriteVariable(VirtAddVarTab[3]+offset, BlockList[3]);
+	EE_WriteVariable(VirtAddVarTab[4]+offset, BlockList[4]);
+	EE_WriteVariable(VirtAddVarTab[5]+offset, BlockList[5]);
+	EE_WriteVariable(VirtAddVarTab[6]+offset, BlockList[6]);
+	EE_WriteVariable(VirtAddVarTab[7]+offset, BlockList[7]);
+	EE_WriteVariable(VirtAddVarTab[8]+offset, BlockList[8]);
+	EE_WriteVariable(VirtAddVarTab[9]+offset, BlockList[9]);
 	HAL_FLASH_Lock();
 }
 bool Serial_Available(UART_HandleTypeDef *huart)
@@ -354,8 +369,9 @@ bool Serial_Available(UART_HandleTypeDef *huart)
 }
 void MenuDecode(char decodechar){
 	char CANIDRx[5];
-	char datalenght;
-	uint8_t datalenghtint;
+	char datalength;
+	char canDirection;
+	uint8_t datalengthint;
 	unsigned int BlockedCanID;
 	unsigned int TxData[8];
 	char CANRxcharData[4];
@@ -373,30 +389,36 @@ void MenuDecode(char decodechar){
 		case '3':
 			printf("Please Input CAN ID in 0xXXX format.\r\n");
 			HAL_UART_Receive(&huart1, (uint8_t*)CANIDRx, 5, HAL_MAX_DELAY);
+			printf("Please Input CAN Direction (1-2).\r\n");
+			HAL_UART_Receive(&huart1, (uint8_t*)&canDirection, 1, HAL_MAX_DELAY);
+
 			sscanf(CANIDRx,"%x",&BlockedCanID);
-			AddtoBlockList(BlockedCanID);
+			AddtoBlockList(canDirection,BlockedCanID);
 			break;
 		case '4':
 			printf("Please Input CAN ID in 0xXXX format.\r\n");
 			HAL_UART_Receive(&huart1, (uint8_t*)CANIDRx, 5, HAL_MAX_DELAY);
+			printf("Please Input CAN Direction (1-2).\r\n");
+			HAL_UART_Receive(&huart1, (uint8_t*)&canDirection, 1, HAL_MAX_DELAY);
+
 			sscanf(CANIDRx,"%x",&BlockedCanID);
-			DeleteBlockList(BlockedCanID);
+			DeleteBlockList(canDirection,BlockedCanID);
 			break;
 		case '5':
 			printf("This Option is Disabled for now.\r\n");
 			break;
 		case '6':
-			printf("Please Input DataLenght.(1-8)\r\n");
-			HAL_UART_Receive(&huart1, (uint8_t*)&datalenght, 1, HAL_MAX_DELAY);
-			datalenghtint = (uint8_t)(datalenght-'0');
-			if(datalenghtint>8)
-				printf("Invalid data lenght\r\n");
+			printf("Please Input DataLength.(1-8)\r\n");
+			HAL_UART_Receive(&huart1, (uint8_t*)&datalength, 1, HAL_MAX_DELAY);
+			datalengthint = (uint8_t)(datalength-'0');
+			if(datalengthint>8)
+				printf("Invalid data length\r\n");
 			printf("Input the Data in 0xXX format");
-			for(int i=0;i<datalenghtint;i++){
+			for(int i=0;i<datalengthint;i++){
 				HAL_UART_Receive(&huart1, (uint8_t*)CANRxcharData, 4, HAL_MAX_DELAY);
 				sscanf(CANRxcharData,"%x",&TxData[i]);
 			}
-			CAN1TxMessage.DLC=datalenghtint;
+			CAN1TxMessage.DLC=datalengthint;
 			CAN1TxMessage.StdId=0x001;
 			if(HAL_CAN_AddTxMessage(&hcan1, &CAN1TxMessage, (uint8_t*)TxData, &CAN1TxMailbox)==HAL_OK){
 				if(debug)
@@ -406,17 +428,17 @@ void MenuDecode(char decodechar){
 			}
 			break;
 		case '7':
-			printf("Please Input DataLenght.(1-8)\r\n");
-			HAL_UART_Receive(&huart1, (uint8_t*)&datalenght, 1, HAL_MAX_DELAY);
-			datalenghtint = (uint8_t)(datalenght-'0');
-			if(datalenghtint>8)
-				printf("Invalid data lenght\r\n");
+			printf("Please Input DataLength.(1-8)\r\n");
+			HAL_UART_Receive(&huart1, (uint8_t*)&datalength, 1, HAL_MAX_DELAY);
+			datalengthint = (uint8_t)(datalength-'0');
+			if(datalengthint>8)
+				printf("Invalid data length\r\n");
 			printf("Input the Data in 0xXX format");
-			for(int i=0;i<datalenghtint;i++){
+			for(int i=0;i<datalengthint;i++){
 				HAL_UART_Receive(&huart1, (uint8_t*)CANRxcharData, 4, HAL_MAX_DELAY);
 				sscanf(CANRxcharData,"%x",&TxData[i]);
 			}
-			CAN2TxMessage.DLC=datalenghtint;
+			CAN2TxMessage.DLC=datalengthint;
 			CAN2TxMessage.StdId=0x001;
 			if(HAL_CAN_AddTxMessage(&hcan2, &CAN2TxMessage, (uint8_t*)TxData, &CAN2TxMailbox)==HAL_OK){
 				if(debug)
@@ -447,9 +469,20 @@ void MenuDecode(char decodechar){
 			else{
 				start=true;
 				if(debug)
-					printf("MITM Starteded\r\n");
+					printf("MITM Started\r\n");
 			}
 			break;
+		case 't':
+			if(sniff) {
+				sniff=false;
+				if(debug)
+					printf("Traffic Sniffing Stopped\r\n");
+			}
+			else {
+				sniff=true;
+				if(debug)
+					printf("Traffic Sniffing Started\r\n");
+			}
 		case 'm':
 			PrintMenu();
 			break;
@@ -458,29 +491,31 @@ void MenuDecode(char decodechar){
 			break;
 	}
 }
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
 	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
 	clearbuffer(CAN1RxData);
 	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1RxMessage, CAN1RxData)==HAL_OK){
-		if(debug){
-			printf("Incoming CAN Message\r\n");
-			printf("Message arrived from 0x%03lx\r\n",CAN1RxMessage.StdId);
+		if(sniff){
+			//printf("Incoming CAN Message\r\n");
+			printf("CAN1: 0x%03lx - ",CAN1RxMessage.StdId);
 			for(int i=0;i<CAN1RxMessage.DLC;i++){
 				printf("0x%x ",CAN1RxData[i]);
 			}
+			printf("\r\n");
 		}
 		if(start){
-			if(!cancheckblock()){
+			if(!cancheckblock(1,CAN1RxMessage.StdId)){
 				if(debug){
 					printf("\r\nMessage Blocked\r\n");
 				}
 			}
 			else{
-				if(candecode(CAN1RxData)){
+				/*if(candecode(CAN1RxData)){
 					if(debug){
 						printf("Message Modified\r\n");
 					}
-				}
+				}*/
 				if(debug){
 					printf("Sending the Message via CAN-2\r\n");
 				}
@@ -492,14 +527,58 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
 	}
 	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
 }
-bool cancheckblock(void){
+
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
+	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+	clearbuffer(CAN2RxData);
+	if(HAL_CAN_GetRxMessage(&hcan2, CAN_RX_FIFO1, &CAN2RxMessage, CAN2RxData)==HAL_OK){
+		if(sniff){
+			//printf("Incoming CAN2 Message\r\n");
+			printf("CAN2: 0x%03lx - ",CAN2RxMessage.StdId);
+			for(int i=0;i<CAN2RxMessage.DLC;i++){
+				printf("0x%x ",CAN2RxData[i]);
+			}
+			printf("\r\n");
+		}
+		if(start){
+			if(!cancheckblock(2,CAN2RxMessage.StdId)){
+				if(debug){
+					printf("\r\nMessage Blocked\r\n");
+				}
+			}
+			else{
+				/*if(candecode(CAN2RxData)){
+					if(debug){
+						printf("Message Modified\r\n");
+					}
+				}*/
+				if(debug){
+					printf("Sending the Message via CAN-1\r\n");
+				}
+				CAN1TxMessage.DLC=CAN2RxMessage.DLC;
+				CAN1TxMessage.StdId=CAN2RxMessage.StdId;
+				HAL_CAN_AddTxMessage(&hcan1, &CAN1TxMessage, CAN2RxData, &CAN1TxMailbox);
+			}
+		}
+	}
+	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+}
+
+bool cancheckblock(uint8_t Direction, uint32_t StdId){
 	for(int i=0;i<10;i++){
-		if(CAN1RxMessage.StdId==BlockList[i]){
-			return false;
+		if (Direction==1) {
+			if(StdId==BlockList1[i]){
+				return false;
+			}
+		} else {
+			if(StdId==BlockList2[i]){
+				return false;
+			}
 		}
 	}
 	return true;
 }
+
 void clearbuffer(uint8_t *buffer){
 	for(int i=0;i<8;i++){
 		buffer[i]=0;
@@ -508,35 +587,64 @@ void clearbuffer(uint8_t *buffer){
 bool candecode(uint8_t *buffer){
 	return false;
 }
-void AddtoBlockList(uint16_t BlockedCanID){
+void AddtoBlockList(uint8_t Direction,uint16_t BlockedCanID){
 	for(int i=0;i<10;i++){
-		if(BlockList[i]==BlockedCanID){
-			if(debug)
-				printf("0x%03x Already Blocked\r\n",BlockedCanID);
-			return;
+		if (Direction==1) {
+			if(BlockList1[i]==BlockedCanID){
+				if(debug)
+					printf("0x%03x Already Blocked\r\n",BlockedCanID);
+				return;
+			}
+		} else {
+			if(BlockList2[i]==BlockedCanID){
+				if(debug)
+					printf("0x%03x Already Blocked\r\n",BlockedCanID);
+				return;
+			}
 		}
 	}
 	for(int i=0;i<10;i++){
-		if(BlockList[i]==0){
-			BlockList[i]=BlockedCanID;
-			if(debug)
-				printf("0x%03x Added to Block List\r\n",BlockedCanID);
-			EEPROM_Block_Write(BlockList);
-			return;
+		if (Direction==1) {
+			if(BlockList1[i]==0){
+				BlockList1[i]=BlockedCanID;
+				if(debug)
+					printf("0x%03x Added to Block List\r\n",BlockedCanID);
+				EEPROM_Block_Write(1,BlockList1);
+				return;
+			} else {
+				if(BlockList2[i]==0){
+					BlockList2[i]=BlockedCanID;
+					if(debug)
+						printf("0x%03x Added to Block List\r\n",BlockedCanID);
+					EEPROM_Block_Write(2,BlockList2);
+					return;
+				}
+			}
 		}
 	}
 	if(debug)
 		printf("Block List is Full.\r\n");
 }
-void DeleteBlockList(uint16_t BlockedCanID){
+void DeleteBlockList(uint8_t Direction,uint16_t BlockedCanID){
 	for(int i=0;i<10;i++){
-		if(BlockList[i]==BlockedCanID){
-			BlockList[i]=0;
-			if(debug)
-				printf("0x%03x Unblocked.\r\n",BlockedCanID);
-			EEPROM_Block_Write(BlockList);
-			return;
+		if (Direction==1) {
+			if(BlockList1[i]==BlockedCanID){
+				BlockList1[i]=0;
+				if(debug)
+					printf("0x%03x Unblocked.\r\n",BlockedCanID);
+				EEPROM_Block_Write(1,BlockList1);
+				return;
+			}
+		} else {
+			if(BlockList2[i]==BlockedCanID){
+				BlockList2[i]=0;
+				if(debug)
+					printf("0x%03x Unblocked.\r\n",BlockedCanID);
+				EEPROM_Block_Write(2,BlockList2);
+				return;
+			}
 		}
+
 	}
 	if(debug)
 		printf("0x%03x was not in Block List.\r\n",BlockedCanID);
